@@ -20,7 +20,6 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              // @ts-expect-error - set is only available in Route Handlers; try/catch guards RSC
               cookieStore.set(name, value, options)
             )
           } catch {}

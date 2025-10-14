@@ -26,34 +26,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cannot start conversation with yourself' }, { status: 400 })
     }
 
-    // Check if conversation already exists between these users
-    const { data: existingConversation, error: existingError } = await supabase
+    // Step 1: fetch all conversation ids for the current user
+    const { data: myParticipantRows, error: myParticipantsError } = await supabase
       .from('conversation_participants')
-      .select(`
-        conversation_id,
-        conversations!inner(
-          id,
-          created_at
-        )
-      `)
+      .select('conversation_id')
       .eq('user_id', user.id)
-      .in('conversation_id', 
-        supabase
-          .from('conversation_participants')
-          .select('conversation_id')
-          .eq('user_id', otherUserId)
-      )
 
-    if (existingError) {
-      console.error('Existing conversation check error:', existingError)
+    if (myParticipantsError) {
+      console.error('Existing conversation check error (my conversations):', myParticipantsError)
+      return NextResponse.json({ error: 'Failed to check conversations' }, { status: 500 })
     }
 
-    if (existingConversation && existingConversation.length > 0) {
-      // Return existing conversation
-      return NextResponse.json({
-        id: existingConversation[0].conversations.id,
-        created_at: existingConversation[0].conversations.created_at
-      })
+    const myConversationIds = (myParticipantRows || []).map(r => r.conversation_id)
+
+    // Step 2: see if the other user is in any of those conversations
+    if (myConversationIds.length > 0) {
+      const { data: existingWithOther, error: existingError } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('user_id', otherUserId)
+        .in('conversation_id', myConversationIds)
+
+      if (existingError) {
+        console.error('Existing conversation check error (other in my conversations):', existingError)
+        return NextResponse.json({ error: 'Failed to check conversations' }, { status: 500 })
+      }
+
+      if (existingWithOther && existingWithOther.length > 0) {
+        return NextResponse.json({ id: existingWithOther[0].conversation_id })
+      }
     }
 
     // Create new conversation
@@ -68,16 +69,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 })
     }
 
-    // Add both users as participants
-    const { error: participantsError } = await supabase
+    // Add current user as participant first (passes RLS)
+    const { error: addSelfError } = await supabase
       .from('conversation_participants')
-      .insert([
-        { conversation_id: conversation.id, user_id: user.id },
-        { conversation_id: conversation.id, user_id: otherUserId }
-      ])
+      .insert({ conversation_id: conversation.id, user_id: user.id })
 
-    if (participantsError) {
-      console.error('Participants creation error:', participantsError)
+    if (addSelfError) {
+      console.error('Failed adding current user as participant:', addSelfError)
+      return NextResponse.json({ error: 'Failed to add participants' }, { status: 500 })
+    }
+
+    // Then add the other user (policy allows adding others if you are a participant)
+    const { error: addOtherError } = await supabase
+      .from('conversation_participants')
+      .insert({ conversation_id: conversation.id, user_id: otherUserId })
+
+    if (addOtherError) {
+      console.error('Failed adding other user as participant:', addOtherError)
       return NextResponse.json({ error: 'Failed to add participants' }, { status: 500 })
     }
 
@@ -152,7 +160,7 @@ export async function GET(request: NextRequest) {
 
       conversations.push({
         id: cid,
-        participant: other,
+        participant: other as any || null,
         lastMessage: lastMsg || null,
         unreadCount: 0
       })

@@ -3,9 +3,10 @@ import { createClient, createClientWithAccessToken } from '@/lib/supabase-server
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { conversationId: string } }
+  context: { params: Promise<{ conversationId: string }> }
 ) {
   try {
+    const { conversationId } = await context.params
     const authHeader = request.headers.get('authorization') || ''
     const bearer = authHeader.startsWith('Bearer ')
       ? authHeader.slice('Bearer '.length)
@@ -22,7 +23,7 @@ export async function GET(
     const { data: participant, error: participantError } = await supabase
       .from('conversation_participants')
       .select('user_id')
-      .eq('conversation_id', params.conversationId)
+      .eq('conversation_id', conversationId)
       .eq('user_id', user.id)
       .single()
 
@@ -43,7 +44,7 @@ export async function GET(
           primary_photo_url
         )
       `)
-      .eq('conversation_id', params.conversationId)
+      .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
 
     if (error) {
@@ -52,16 +53,7 @@ export async function GET(
     }
 
     // Transform the data
-    const transformedMessages = messages.map((msg: {
-      id: string
-      content: string
-      sender_id: string
-      created_at: string
-      profiles: {
-        display_name: string
-        primary_photo_url: string | null
-      }
-    }) => ({
+    const transformedMessages = messages.map((msg: any) => ({
       id: msg.id,
       content: msg.content,
       sender_id: msg.sender_id,
@@ -78,9 +70,10 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { conversationId: string } }
+  context: { params: Promise<{ conversationId: string }> }
 ) {
   try {
+    const { conversationId } = await context.params
     const authHeader = request.headers.get('authorization') || ''
     const bearer = authHeader.startsWith('Bearer ')
       ? authHeader.slice('Bearer '.length)
@@ -104,7 +97,7 @@ export async function POST(
     const { data: participant, error: participantError } = await supabase
       .from('conversation_participants')
       .select('user_id')
-      .eq('conversation_id', params.conversationId)
+      .eq('conversation_id', conversationId)
       .eq('user_id', user.id)
       .single()
 
@@ -116,7 +109,7 @@ export async function POST(
     const { data: message, error } = await supabase
       .from('messages')
       .insert({
-        conversation_id: params.conversationId,
+        conversation_id: conversationId,
         sender_id: user.id,
         content: content.trim()
       })

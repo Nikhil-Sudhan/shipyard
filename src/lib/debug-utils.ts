@@ -7,16 +7,16 @@
  * @param context Optional context object
  */
 export const logger = {
-  log: (message: string, context?: any) => {
+  log: (message: string, context?: unknown) => {
     console.log(`[${new Date().toISOString()}] ${message}`, context || '');
   },
-  info: (message: string, context?: any) => {
+  info: (message: string, context?: unknown) => {
     console.info(`[${new Date().toISOString()}] INFO: ${message}`, context || '');
   },
-  warn: (message: string, context?: any) => {
+  warn: (message: string, context?: unknown) => {
     console.warn(`[${new Date().toISOString()}] WARNING: ${message}`, context || '');
   },
-  error: (message: string, context?: any) => {
+  error: (message: string, context?: unknown) => {
     console.error(`[${new Date().toISOString()}] ERROR: ${message}`, context || '');
   }
 };
@@ -50,7 +50,7 @@ export async function handleApiResponse<T>(response: Response): Promise<{
         statusCode
       };
     }
-  } catch (error) {
+  } catch {
     return {
       success: false,
       error: 'Failed to parse response',

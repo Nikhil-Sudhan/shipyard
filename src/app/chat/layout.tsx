@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Menu, MessageCircle, LogOut } from 'lucide-react'
 import AuthButton from '@/components/auth-button'
+import { supabase } from '@/lib/supabase'
 
 interface Chat {
   id: string
@@ -36,7 +37,10 @@ export default function ChatLayout({
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch('/api/conversations')
+        const { data } = await supabase.auth.getSession()
+        const accessToken = data.session?.access_token
+        const authHeaders: Record<string, string> = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+        const res = await fetch('/api/conversations', { headers: authHeaders })
         if (res.ok) {
           const data = await res.json()
           setChats(data)
@@ -147,7 +151,14 @@ function ChatSidebar({ chats, onSelectChat }: { chats: Chat[]; onSelectChat: (id
 
       {/* Footer */}
       <div className="p-4 border-t border-border">
-        <Button variant="ghost" className="w-full justify-start">
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={async () => {
+            await supabase.auth.signOut()
+            window.location.href = '/'
+          }}
+        >
           <LogOut className="h-4 w-4 mr-2" />
           sign out
         </Button>

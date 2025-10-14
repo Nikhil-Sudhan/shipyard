@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { MessageCircle, MapPin, Camera } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 interface Profile {
   id: string
@@ -51,9 +52,12 @@ export default function ProfilePage() {
     
     setIsStartingChat(true)
     try {
+      const { data } = await supabase.auth.getSession()
+      const accessToken = data.session?.access_token
+      const authHeaders: Record<string, string> = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
       const response = await fetch('/api/conversations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ otherUserId: profile.id })
       })
 
@@ -99,7 +103,7 @@ export default function ProfilePage() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-foreground">shipyard</h1>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" onClick={() => window.location.href = '/'}>
               Back to Search
             </Button>
           </div>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
 import AuthButton from "@/components/auth-button";
 
@@ -25,7 +26,7 @@ export default function RootLayout({
         className={`${inter.variable} font-sans antialiased bg-background text-foreground`}
       >
         <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between p-4 bg-background/80 backdrop-blur-md border-b border-border">
-          <a href="/" className="text-xl font-semibold">shipyard</a>
+          <Link href="/" className="text-xl font-semibold hover:text-primary transition-colors cursor-pointer">shipyard</Link>
           <AuthButton />
         </header>
         <main className="pt-16">

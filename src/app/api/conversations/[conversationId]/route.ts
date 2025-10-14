@@ -3,59 +3,52 @@ import { createClient, createClientWithAccessToken } from '@/lib/supabase-server
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { conversationId: string } }
+  context: { params: Promise<{ conversationId: string }> }
 ) {
   try {
+    const { conversationId } = await context.params
     const authHeader = request.headers.get('authorization') || ''
     const bearer = authHeader.startsWith('Bearer ')
       ? authHeader.slice('Bearer '.length)
       : null
     const supabase = bearer ? createClientWithAccessToken(bearer) : await createClient()
-    
+
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get conversation with participants
-    const { data: conversation, error } = await supabase
-      .from('conversations')
-      .select(`
-        id,
-        created_at,
-        conversation_participants!inner(
-          user_id,
-          profiles!conversation_participants_user_id_fkey(
-            id,
-            display_name,
-            primary_photo_url
-          )
-        )
-      `)
-      .eq('id', params.conversationId)
-      .eq('conversation_participants.user_id', user.id)
+    // Verify current user is a participant in this conversation
+    const { data: participant, error: participantError } = await supabase
+      .from('conversation_participants')
+      .select('user_id')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', user.id)
       .single()
 
+    if (participantError || !participant) {
+      return NextResponse.json({ error: 'Not a participant' }, { status: 403 })
+    }
+
+    // Fetch participants (other users) for the conversation
+    const { data: others, error } = await supabase
+      .from('conversation_participants')
+      .select('profiles!inner(id, display_name, primary_photo_url)')
+      .eq('conversation_id', conversationId)
+      .neq('user_id', user.id)
+
     if (error) {
-      console.error('Conversation fetch error:', error)
-      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+      console.error('Conversation participants fetch error:', error)
+      return NextResponse.json({ error: 'Failed to fetch conversation' }, { status: 500 })
     }
 
-    // Transform the data to match our interface
-    const transformedConversation = {
-      id: conversation.id,
-      created_at: conversation.created_at,
-      participants: conversation.conversation_participants.map((cp: {
-        profiles: {
-          id: string
-          display_name: string
-          primary_photo_url: string | null
-        }
-      }) => cp.profiles)
-    }
+    const participants = (others || []).map((row: any) => row.profiles)
 
-    return NextResponse.json(transformedConversation)
+    return NextResponse.json({
+      id: conversationId,
+      participants,
+    })
   } catch (error) {
     console.error('Conversation API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

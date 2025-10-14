@@ -14,17 +14,17 @@ import { supabase } from '@/lib/supabase'
 const GEN_Z_QUESTIONS = [
   {
     key: 'vibe_check',
-    question: 'what&apos;s your main vibe?',
+    question: 'what\'s your main vibe?',
     placeholder: 'chill, chaotic, mysterious, etc.'
   },
   {
     key: 'dream_project',
-    question: 'what&apos;s your dream project?',
+    question: 'what\'s your dream project?',
     placeholder: 'building the next big thing, creating art, etc.'
   },
   {
     key: 'coffee_order',
-    question: 'what&apos;s your go-to coffee order?',
+    question: 'what\'s your go-to coffee order?',
     placeholder: 'iced oat milk latte, black coffee, etc.'
   },
   {
@@ -34,7 +34,7 @@ const GEN_Z_QUESTIONS = [
   },
   {
     key: 'life_goal',
-    question: 'what&apos;s your biggest life goal?',
+    question: 'what\'s your biggest life goal?',
     placeholder: 'start a company, travel the world, etc.'
   }
 ]
@@ -127,7 +127,7 @@ export default function Onboarding() {
       // 1) Save answers
       logger.info('Step 1: Saving profile answers')
       const accessToken = data.session?.access_token
-      const authHeaders = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+      const authHeaders: Record<string, string> = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
 
       const answersResponse = await handleApiResponse(
         await fetch('/api/profile/answers', {
@@ -158,7 +158,7 @@ export default function Onboarding() {
         throw new Error(`Failed to generate summary: ${summaryResponse.error}`)
       }
       
-      const summary = summaryResponse.data
+      const summary = summaryResponse.data as { intro: string[]; outro: string }
       logger.info('Summary generated successfully', { summary })
 
       // 3) Upload photos
@@ -262,7 +262,7 @@ export default function Onboarding() {
       <div className="container mx-auto px-4 max-w-2xl">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">welcome to shipyard</h1>
-          <p className="text-muted-foreground">let's set up your profile</p>
+          <p className="text-muted-foreground">let&apos;s set up your profile</p>
         </div>
 
         {/* Step 1: Basic Info */}

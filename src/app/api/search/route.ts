@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   // Add search filter if query is provided
   if (query) {
     profileQuery = profileQuery.or(
-      `display_name.ilike.%${query}%,interests.cs.{${query}},summary_intro.cs.{${query}}`
+      `display_name.ilike.%${query}%,interests.cs.{${query}},summary_intro::text.ilike.%${query}%`
     )
   }
   

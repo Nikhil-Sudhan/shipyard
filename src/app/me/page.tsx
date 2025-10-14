@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Edit, Save, X, MapPin, Camera, AlertCircle, Loader2 } from 'lucide-react'
 import { logger, handleApiResponse } from '@/lib/debug-utils'
+import { supabase } from '@/lib/supabase'
 
 interface Profile {
   id: string
@@ -32,22 +33,30 @@ export default function MePage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isNewProfile, setIsNewProfile] = useState(false)
+  const [isEditingPhotos, setIsEditingPhotos] = useState(false)
+  const [primaryPhotoFile, setPrimaryPhotoFile] = useState<File | null>(null)
+  const [extraPhotoFiles, setExtraPhotoFiles] = useState<File[]>([])
+  const [isUploadingPhotos, setIsUploadingPhotos] = useState(false)
 
   useEffect(() => {
     const fetchProfile = async () => {
       setError(null)
       try {
         logger.info('Fetching user profile')
+        const { data } = await supabase.auth.getSession()
+        const accessToken = data.session?.access_token
+        const authHeaders: Record<string, string> = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
         const response = await handleApiResponse(
-          await fetch('/api/profile')
+          await fetch('/api/profile', { headers: authHeaders })
         )
         
         if (response.success && response.data) {
           logger.info('Profile loaded successfully')
-          setProfile(response.data)
+          const profileData = response.data as Profile
+          setProfile(profileData)
           setEditData({
-            summary_intro: response.data.summary_intro || [],
-            summary_outro: response.data.summary_outro || ''
+            summary_intro: profileData.summary_intro || [],
+            summary_outro: profileData.summary_outro || ''
           })
           
           // Check if this is a new profile (from URL params)
@@ -73,9 +82,12 @@ export default function MePage() {
   const handleSave = async () => {
     setIsSaving(true)
     try {
+      const { data } = await supabase.auth.getSession()
+      const accessToken = data.session?.access_token
+      const authHeaders: Record<string, string> = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
       const response = await fetch('/api/profile', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           summary_intro: editData.summary_intro,
           summary_outro: editData.summary_outro
@@ -100,6 +112,65 @@ export default function MePage() {
       summary_outro: profile?.summary_outro || ''
     })
     setIsEditing(false)
+  }
+
+  const handleSavePhotos = async () => {
+    if (!profile) return
+    setIsUploadingPhotos(true)
+    try {
+      const { data } = await supabase.auth.getSession()
+      const accessToken = data.session?.access_token
+      const authHeaders: Record<string, string> = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+
+      const upload = async (file: File, path: string): Promise<string> => {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('path', path)
+        const uploadResponse = await handleApiResponse<{ url: string }>(
+          await fetch('/api/storage/upload', { method: 'POST', headers: authHeaders, body: fd })
+        )
+        if (!uploadResponse.success || !uploadResponse.data) {
+          throw new Error(uploadResponse.error || 'upload failed')
+        }
+        return uploadResponse.data.url
+      }
+
+      let newPrimaryUrl = profile.primary_photo_url
+      if (primaryPhotoFile) {
+        newPrimaryUrl = await upload(primaryPhotoFile, `primary-${Date.now()}.jpg`)
+      }
+
+      const newExtraUrls: string[] = []
+      for (const file of extraPhotoFiles.slice(0, 3)) {
+        const url = await upload(file, `extra-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`)
+        newExtraUrls.push(url)
+      }
+
+      const saveResponse = await handleApiResponse<Profile>(
+        await fetch('/api/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+          body: JSON.stringify({
+            primary_photo_url: newPrimaryUrl,
+            extra_photo_urls: newExtraUrls.length > 0 ? newExtraUrls : profile.extra_photo_urls || []
+          })
+        })
+      )
+
+      if (!saveResponse.success || !saveResponse.data) {
+        throw new Error(saveResponse.error || 'failed to save photos')
+      }
+
+      setProfile(saveResponse.data as Profile)
+      setIsEditingPhotos(false)
+      setPrimaryPhotoFile(null)
+      setExtraPhotoFiles([])
+    } catch (e) {
+      logger.error('Failed to update photos', e)
+      setError(e instanceof Error ? e.message : 'Failed to update photos')
+    } finally {
+      setIsUploadingPhotos(false)
+    }
   }
 
   if (loading) {
@@ -142,23 +213,6 @@ export default function MePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-foreground">shipyard</h1>
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm">
-                Home
-              </Button>
-              <Button variant="ghost" size="sm">
-                Sign Out
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
       {/* Profile Content */}
       <main className="container mx-auto px-4 py-8">
         {isNewProfile && (
@@ -340,11 +394,63 @@ export default function MePage() {
 
               <Card className="glass">
                 <CardContent className="p-6">
-                  <Button variant="outline" className="w-full">
+                  <Button variant="outline" className="w-full" onClick={() => setIsEditingPhotos(true)}>
                     edit photos
                   </Button>
                 </CardContent>
               </Card>
+
+              {isEditingPhotos ? (
+                <Card className="glass">
+                  <CardHeader>
+                    <CardTitle>edit photos</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">primary photo</label>
+                      <div className="flex items-center gap-4">
+                        <Avatar className="h-20 w-20">
+                          <AvatarImage src={primaryPhotoFile ? URL.createObjectURL(primaryPhotoFile) : (profile.primary_photo_url || '')} />
+                          <AvatarFallback>
+                            <Camera className="h-6 w-6" />
+                          </AvatarFallback>
+                        </Avatar>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setPrimaryPhotoFile(e.target.files?.[0] || null)}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">extra photos (up to 3)</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => setExtraPhotoFiles(Array.from(e.target.files || []).slice(0, 3))}
+                      />
+                      <div className="grid grid-cols-3 gap-2 mt-3">
+                        {extraPhotoFiles.map((file, idx) => (
+                          <img key={idx} src={URL.createObjectURL(file)} alt="preview" className="w-full h-24 object-cover rounded" />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleSavePhotos} disabled={isUploadingPhotos}>
+                        {isUploadingPhotos ? 'saving...' : 'save photos'}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => { setIsEditingPhotos(false); setPrimaryPhotoFile(null); setExtraPhotoFiles([]) }}>
+                        cancel
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Button variant="ghost" size="sm" onClick={() => setIsEditingPhotos(true)}>edit photos</Button>
+              )}
             </div>
           </div>
         </div>

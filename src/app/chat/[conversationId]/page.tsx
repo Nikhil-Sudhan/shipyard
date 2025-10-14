@@ -45,7 +45,10 @@ export default function ChatPage() {
   useEffect(() => {
     const fetchConversation = async () => {
       try {
-        const response = await fetch(`/api/conversations/${params.conversationId}`)
+        const { data } = await supabase.auth.getSession()
+        const accessToken = data.session?.access_token
+        const authHeaders: Record<string, string> = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+        const response = await fetch(`/api/conversations/${params.conversationId}`, { headers: authHeaders })
         if (response.ok) {
           const data = await response.json()
           setConversation(data)
@@ -65,7 +68,10 @@ export default function ChatPage() {
   useEffect(() => {
     const fetchMessages = async () => {
       try {
-        const response = await fetch(`/api/conversations/${params.conversationId}/messages`)
+        const { data } = await supabase.auth.getSession()
+        const accessToken = data.session?.access_token
+        const authHeaders: Record<string, string> = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+        const response = await fetch(`/api/conversations/${params.conversationId}/messages`, { headers: authHeaders })
         if (response.ok) {
           const data = await response.json()
           setMessages(data)
@@ -127,9 +133,12 @@ export default function ChatPage() {
     setNewMessage('')
 
     try {
+      const { data } = await supabase.auth.getSession()
+      const accessToken = data.session?.access_token
+      const authHeaders: Record<string, string> = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
       const response = await fetch(`/api/conversations/${params.conversationId}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ content: messageContent })
       })
 

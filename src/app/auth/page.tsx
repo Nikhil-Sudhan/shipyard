@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Auth } from '@supabase/auth-ui-react'
 import { ThemeSupa } from '@supabase/auth-ui-shared'
@@ -9,13 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default function AuthPage() {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
+  const redirectTo = typeof window !== 'undefined'
+    ? `${window.location.origin}/auth/callback`
+    : (process.env.NEXT_PUBLIC_SITE_URL ? `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback` : undefined)
 
   // Check if user is already authenticated
-  supabase.auth.onAuthStateChange((event, session) => {
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session) {
-      setLoading(true)
-      
       // Check if user has a profile
       const checkProfile = async () => {
         const { data: profile } = await supabase
@@ -33,7 +34,10 @@ export default function AuthPage() {
       
       checkProfile()
     }
-  })
+    })
+
+    return () => subscription.unsubscribe()
+  }, [router])
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
@@ -93,7 +97,7 @@ export default function AuthPage() {
             }}
             theme="dark"
             providers={['google']}
-            redirectTo={`${window.location.origin}/auth/callback`}
+            redirectTo={redirectTo}
             magicLink={true}
           />
         </CardContent>

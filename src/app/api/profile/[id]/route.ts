@@ -3,9 +3,10 @@ import { createClient, createClientWithAccessToken } from '@/lib/supabase-server
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params
     const authHeader = request.headers.get('authorization') || ''
     const bearer = authHeader.startsWith('Bearer ')
       ? authHeader.slice('Bearer '.length)
@@ -15,7 +16,7 @@ export async function GET(
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
 
     if (error) {
