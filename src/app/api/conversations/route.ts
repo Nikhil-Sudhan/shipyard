@@ -3,20 +3,47 @@ import { createClient, createClientWithAccessToken } from '@/lib/supabase-server
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🔍 Conversation creation request received')
+    
     const authHeader = request.headers.get('authorization') || ''
     const bearer = authHeader.startsWith('Bearer ')
       ? authHeader.slice('Bearer '.length)
       : null
+    
+    console.log('🔑 Auth header present:', !!authHeader)
+    console.log('🔑 Bearer token present:', !!bearer)
+    
     const supabase = bearer ? createClientWithAccessToken(bearer) : await createClient()
     
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
+      console.error('❌ Auth error:', authError)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    console.log('✅ User authenticated:', user.id)
+
+    // Test database connectivity first
+    console.log('🔍 Testing database connectivity...')
+    const { data: testData, error: testError } = await supabase
+      .from('profiles')
+      .select('id')
+      .limit(1)
+    
+    if (testError) {
+      console.error('❌ Database connectivity test failed:', testError)
+      return NextResponse.json({ 
+        error: 'Database connection failed', 
+        details: testError.message 
+      }, { status: 500 })
+    }
+    console.log('✅ Database connectivity test passed')
+
     const body = await request.json()
     const { otherUserId } = body
+
+    console.log('👤 Other user ID:', otherUserId)
 
     if (!otherUserId) {
       return NextResponse.json({ error: 'Other user ID is required' }, { status: 400 })
@@ -27,15 +54,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 1: fetch all conversation ids for the current user
+    console.log('🔍 Checking existing conversations for user:', user.id)
     const { data: myParticipantRows, error: myParticipantsError } = await supabase
       .from('conversation_participants')
       .select('conversation_id')
       .eq('user_id', user.id)
 
     if (myParticipantsError) {
-      console.error('Existing conversation check error (my conversations):', myParticipantsError)
-      return NextResponse.json({ error: 'Failed to check conversations' }, { status: 500 })
+      console.error('❌ Existing conversation check error (my conversations):', myParticipantsError)
+      console.error('❌ Error details:', {
+        code: myParticipantsError.code,
+        message: myParticipantsError.message,
+        details: myParticipantsError.details,
+        hint: myParticipantsError.hint
+      })
+      return NextResponse.json({ 
+        error: 'Failed to check conversations', 
+        details: myParticipantsError.message 
+      }, { status: 500 })
     }
+
+    console.log('✅ Found existing conversations:', myParticipantRows?.length || 0)
 
     const myConversationIds = (myParticipantRows || []).map(r => r.conversation_id)
 
@@ -58,6 +97,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create new conversation
+    console.log('💬 Creating new conversation...')
     const { data: conversation, error: conversationError } = await supabase
       .from('conversations')
       .insert({})
@@ -65,34 +105,51 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (conversationError) {
-      console.error('Conversation creation error:', conversationError)
+      console.error('❌ Conversation creation error:', conversationError)
       return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 })
     }
 
+    console.log('✅ Conversation created:', conversation.id)
+
     // Add current user as participant first (passes RLS)
+    console.log('👤 Adding current user as participant...')
     const { error: addSelfError } = await supabase
       .from('conversation_participants')
       .insert({ conversation_id: conversation.id, user_id: user.id })
 
     if (addSelfError) {
-      console.error('Failed adding current user as participant:', addSelfError)
+      console.error('❌ Failed adding current user as participant:', addSelfError)
       return NextResponse.json({ error: 'Failed to add participants' }, { status: 500 })
     }
 
+    console.log('✅ Current user added as participant')
+
     // Then add the other user (policy allows adding others if you are a participant)
+    console.log('👥 Adding other user as participant...')
     const { error: addOtherError } = await supabase
       .from('conversation_participants')
       .insert({ conversation_id: conversation.id, user_id: otherUserId })
 
     if (addOtherError) {
-      console.error('Failed adding other user as participant:', addOtherError)
+      console.error('❌ Failed adding other user as participant:', addOtherError)
       return NextResponse.json({ error: 'Failed to add participants' }, { status: 500 })
     }
 
+    console.log('✅ Other user added as participant')
+    console.log('🎉 Conversation setup complete:', conversation)
+
     return NextResponse.json(conversation)
   } catch (error) {
-    console.error('Conversation API error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('❌ Conversation API error:', error)
+    console.error('❌ Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined
+    })
+    return NextResponse.json({ 
+      error: 'Internal server error', 
+      details: error instanceof Error ? error.message : 'Unknown error' 
+    }, { status: 500 })
   }
 }
 

@@ -34,8 +34,18 @@ export default function HomePage() {
     setMessage('')
     
     try {
+      console.log('🔍 Searching for:', query)
       const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`)
       const data = await response.json()
+      
+      console.log('📥 Search response:', data)
+      
+      if (data.error) {
+        console.error('❌ Search API error:', data.error, data.details)
+        setMessage(`error: ${data.error}. check console for details.`)
+        setResults([])
+        return
+      }
       
       setResults(data.profiles || [])
       
@@ -46,8 +56,8 @@ export default function HomePage() {
         setMessage(`hmm, couldn't find anyone for "${query}". try something else?`)
       }
     } catch (error) {
-      console.error('Search error:', error)
-      setMessage('oops, something went wrong with the search.')
+      console.error('❌ Search error:', error)
+      setMessage('oops, something went wrong with the search. check console for details.')
     } finally {
       setLoading(false)
     }

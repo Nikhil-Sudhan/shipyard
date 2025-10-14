@@ -52,23 +52,57 @@ export default function ProfilePage() {
     
     setIsStartingChat(true)
     try {
+      console.log('🔍 Starting chat with user:', profile.id)
+      
       const { data } = await supabase.auth.getSession()
       const accessToken = data.session?.access_token
-      const authHeaders: Record<string, string> = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+      
+      if (!accessToken) {
+        console.error('❌ No access token found - user not authenticated')
+        alert('Please sign in to start a chat')
+        return
+      }
+      
+      const authHeaders: Record<string, string> = { Authorization: `Bearer ${accessToken}` }
+      
+      console.log('📤 Sending conversation request...')
       const response = await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ otherUserId: profile.id })
       })
 
+      console.log('📥 Conversation response status:', response.status)
+      console.log('📥 Response headers:', Object.fromEntries(response.headers.entries()))
+      
       if (response.ok) {
         const conversation = await response.json()
+        console.log('✅ Conversation created:', conversation)
         window.location.href = `/chat/${conversation.id}`
       } else {
-        console.error('Failed to start conversation')
+        let errorData
+        try {
+          errorData = await response.json()
+          console.error('❌ Failed to start conversation - API Error:', errorData)
+        } catch (parseError) {
+          console.error('❌ Failed to parse error response:', parseError)
+          const textResponse = await response.text()
+          console.error('❌ Raw response text:', textResponse)
+          errorData = { error: `HTTP ${response.status}: ${textResponse}` }
+        }
+        
+        console.error('❌ Full error details:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData,
+          url: response.url
+        })
+        
+        alert(`Failed to start conversation: ${errorData.error || `HTTP ${response.status}`}`)
       }
     } catch (error) {
-      console.error('Error starting chat:', error)
+      console.error('❌ Error starting chat:', error)
+      alert(`Error starting chat: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsStartingChat(false)
     }
@@ -98,18 +132,6 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-foreground">shipyard</h1>
-            <Button variant="ghost" size="sm" onClick={() => window.location.href = '/'}>
-              Back to Search
-            </Button>
-          </div>
-        </div>
-      </header>
-
       {/* Profile Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">

@@ -82,25 +82,31 @@ CREATE POLICY "conversations_select_participants" ON conversations FOR SELECT
 CREATE POLICY "conversations_insert_participants" ON conversations FOR INSERT 
   WITH CHECK (true); -- Will be handled by conversation_participants
 
--- RLS Policies for conversation_participants
-CREATE POLICY "conversation_participants_select_participants" ON conversation_participants FOR SELECT 
-  USING (user_id = auth.uid() OR conversation_id IN (
-    SELECT conversation_id FROM conversation_participants WHERE user_id = auth.uid()
-  ));
-CREATE POLICY "conversation_participants_insert_participants" ON conversation_participants FOR INSERT 
-  WITH CHECK (user_id = auth.uid());
+-- RLS Policies for conversation_participants (fixed to prevent infinite recursion)
+CREATE POLICY "conversation_participants_select_participants" ON conversation_participants 
+  FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "conversation_participants_insert_participants" ON conversation_participants 
+  FOR INSERT WITH CHECK (user_id = auth.uid());
 
--- RLS Policies for messages
-CREATE POLICY "messages_select_participants" ON messages FOR SELECT 
-  USING (conversation_id IN (
-    SELECT conversation_id FROM conversation_participants WHERE user_id = auth.uid()
-  ));
-CREATE POLICY "messages_insert_participants" ON messages FOR INSERT 
-  WITH CHECK (
+-- Helper function to check conversation participation (prevents infinite recursion)
+CREATE OR REPLACE FUNCTION is_conversation_participant(conversation_uuid UUID, user_uuid UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM conversation_participants 
+    WHERE conversation_id = conversation_uuid 
+    AND user_id = user_uuid
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RLS Policies for messages (using helper function to prevent infinite recursion)
+CREATE POLICY "messages_select_participants" ON messages 
+  FOR SELECT USING (is_conversation_participant(conversation_id, auth.uid()));
+CREATE POLICY "messages_insert_participants" ON messages 
+  FOR INSERT WITH CHECK (
     sender_id = auth.uid() AND 
-    conversation_id IN (
-      SELECT conversation_id FROM conversation_participants WHERE user_id = auth.uid()
-    )
+    is_conversation_participant(conversation_id, auth.uid())
   );
 
 -- Create storage bucket for profile photos
